@@ -217,17 +217,37 @@ def main_worker(gpu, ngpus_per_node, args):
     # create model
     print("=> creating model '{}'".format(args.model))
     model, criterion = set_model(ngpus_per_node, args)
+    #print("create model after set_model") ###del
     args.classifier = LinearClassifier(name=args.model, num_classes=args.num_classes).cuda(args.gpu)
+    #print("1") ###del
     set_parameter_requires_grad(model, args.feature_extract)
+    #print("2") ###del
     optimizer = setup_optimizer(model, args.learning_rate,
                                    args.momentum, args.weight_decay,
                                    args.feature_extract)
+    #print("3") ###del
     cudnn.benchmark = True
+    #print("4") ###del
+    #print("before load_deep_fashion_hierarchical ") ##del
     dataloaders_dict, sampler = load_deep_fashion_hierarchical(args.data, args.train_listfile,
                                  args.val_listfile, args.class_map_file, args.repeating_product_file,
                                  args)
-
+    print("load_deep_fashion_hierarchical ") ##del knov
+    print("dataloaders_dict ", dataloaders_dict) ##del knov
+    print("dataloaders_dict type", type(dataloaders_dict)) ##del knov
+    print("dataloaders_dict[train] ", dataloaders_dict['train']) ##del knov
+    print("dataloaders_dict[train] type", type(dataloaders_dict['train'])) ##del knov
+    #print("dataloaders_dict shape", dataloaders_dict.shape) ##del knov
+    #print("sampler", sampler) ##del knov
+    
+    #print("after load_deep_fashion_hierarchical ") ##del
     train_sampler, val_sampler = sampler['train'], sampler['val']
+    #print("train_sampler ", train_sampler) ##del knov
+    #print("train_sampler type ", type(train_sampler)) ##del knov
+    #print("train_sampler shape ", train_sampler.shape) ##del knov
+    #print("train_sampler size ", train_sampler.size) ##del knov
+    #print("val_sampler ", val_sampler) ##del knov
+    #print("val_sampler shape ", val_sampler.shape) ##del knov
     for epoch in range(1, args.epochs + 1):
         print('Epoch {}/{}'.format(epoch, args.epochs + 1))
         print('-' * 10)
@@ -237,7 +257,9 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(args, optimizer, epoch)
 
         # train for one epoch
+        #print("before train ") ##del
         train(dataloaders_dict, model, criterion, optimizer, epoch, args, logger)
+        #print("after train ") ##del
         output_file = args.save_folder + '/checkpoint_{:04d}.pth.tar'.format(epoch)
 
         if not args.multiprocessing_distributed or (
@@ -251,10 +273,12 @@ def main_worker(gpu, ngpus_per_node, args):
                 filename=output_file)
 
 def set_model(ngpus_per_node, args):
+    #print("Begin set_model") ###del
     model = resnet_modified.MyResNet(name='resnet50')
     criterion = HMLC(temperature=args.temp, loss_type=args.loss, layer_penalty=torch.exp)
 
     # This part is to load a pretrained model
+    #print("set_model before torch.load") ###del
     ckpt = torch.load(args.ckpt, map_location='cpu')
     #state_dict = ckpt['state_dict'] 
 
@@ -341,15 +365,35 @@ def train(dataloaders, model, criterion, optimizer, epoch, args, logger):
         classifier.eval()
 
         # Iterate over data.
+        #print("func train iter begin") ##del
+        #print(dataloaders[phase]) ##del
+        #print(phase) ##del
         for idx, (images, labels) in enumerate(dataloaders[phase]):
             data_time.update(time.time() - end)
-            images2_0 = torch.stack(images) ##knov
+            print("idx ", idx) ##del knov
+            #print("images ", images) ##del knov
+            print("images len  ", len(images)) ##del knov
+            images2_0 = torch.stack(images) ##del knov
+            print("train images0 shape: ", images2_0.shape) ##del knov
             images_2 = images2_0.repeat(2,1,1,1,1,1) ## knov        
+            print("train images_2 shape: ", images_2.shape) ##del knov
+            print("images_2 len  ", len(images_2)) ##del knov
+            #print("img shape ",np.asarray(images).shape)
+            #print("labels ", labels) ##del knov
+            print("labels len  ", len(labels)) ##del knov
+            #labels0 = torch.stack(labels) ##del knov
+            print("train labless0 shape: ", labels.shape) ##del knov
+            #print("loop ")
+            #print(idx) ##del
+            #print((images,labels)) ##del
+            #print(dataloaders[phase]) ##del
             labels = labels.squeeze()
             images = torch.cat([images[0].squeeze(), images[1].squeeze()], dim=0)
             images = images.cuda(non_blocking=True)
+            print("train images shape: ", images.shape) ##del knov
             images_2 = torch.cat([images_2[0].squeeze(), images_2[1].squeeze(), images_2[2].squeeze(), images_2[3].squeeze()], dim=0) #knov
             images_2 = images_2.cuda(non_blocking=True) #knov
+            print("train images_2 shape (after cat): ", images_2.shape) ##del knov
             labels = labels.squeeze().cuda(non_blocking=True)
             bsz = labels.shape[0] #batch size
             if phase == 'train':
@@ -359,24 +403,38 @@ def train(dataloaders, model, criterion, optimizer, epoch, args, logger):
             # track history if only in train
             with torch.set_grad_enabled(phase == 'train'):
                 # Get model outputs and calculate loss
-                features = model(images) 
+                features = model(images)
+                print("train features0 shape: ", features.shape) ##del knov 
                 f1, f2 = torch.split(features, [bsz, bsz], dim=0)
                 features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
                 loss = criterion(features, labels)
                 losses.update(loss.item(), bsz)
 
                 #knov begin
-            
+                #labels2 = torch.stack(labels, dim=1)[:, 0]
+                #labels2 = labels2.cuda(non_blocking=True)
+                #print("train labels2 shape: ", labels2.shape) ##del knov
                 with torch.no_grad():
                      features = model.module.encoder(images_2)
+                print("train features_2 shape: ", features.shape) ##del knov 
+                print("train labels shape: ", labels.shape) ##del knov    
+                #features = features.view(-1,args.batch_size).transpose(0,1)
                 labels = labels.view(-1)
+                #labels = torch.stack(labels, dim=1)[:, 0]
+                print("train features2 shape: ", features.shape) ##del knov 
+                print("train labels2 shape: ", labels.shape) ##del knov 
                 output = classifier(features.detach())
+                print("train output shape: ", output.shape) ##del knov 
                 acc1, acc5 = accuracy(output, labels, topk=(1, 5))
                 top1.update(acc1[0], bsz)
                 top5.update(acc5[0], bsz)
-
                 #konov end
 
+                #output = classifier(features) #knov
+                #print("output shape: ", output.shape)#knov
+                #acc1, acc5 = accuracy(output, labels, topk=(1,))#knov
+                #top1.update(acc1[0], bsz)#knov
+                #top5.update(acc5[0], bsz)#knov
 
 
                 # backward + optimize only if in training phase
@@ -495,7 +553,26 @@ def load_deep_fashion_hierarchical(root_dir, train_list_file, val_list_file, cla
                                        num_workers=opt.workers, batch_size=1,
                                        pin_memory=True)
         for x in ['train', 'val']}
-      
+     ###knov begin
+    dataloaders_dict1 =  torch.utils.data.DataLoader(image_datasets['train'], sampler=sampler['train'],
+                                       num_workers=opt.workers, batch_size=1,
+                                       pin_memory=True)
+    train_features, train_labels = next(iter(dataloaders_dict1))
+    train_features = torch.stack(train_features)
+    print(f"Feature train len: {len(train_features)}")
+    print(f"Feature train0 len: {len(train_features[0])}")
+    print(f"Feature train1 len: {len(train_features[1])}")
+    print(f"Feature feature_0 shape: {train_features[0].size}")
+    print(f"Feature feature_1 shape: {train_features[1].size}")
+    print(f"Feature batch shape: {train_features.size()}")
+    print(f"Labels batch shape: {train_labels.size()}")
+    print("dataloaders_dict1 train ", dataloaders_dict1) ##del knov
+    print("dataloaders_dict type", type(dataloaders_dict1)) ##del knov
+    print("SAMPLER train ", sampler['train']) ##del knov
+    print("SAMPLER train len ", sampler['train'].__len__()) ##del knov
+    print("SAMPLER train number of samples  ", sampler['train'].num_samp()) ##del knov
+    print("SAMPLER train batch size  ", sampler['train'].batch_s()) ##del knov
+    ##knov end   
     return dataloaders_dict, sampler
 
 
@@ -585,7 +662,11 @@ def accuracy(output, target, topk=(1,)):
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
+        print("output ", output) ##del knov
+        print("output shape2:", output.shape) ##del knov
         _, pred = output.topk(maxk, 1, True, True)
+        print("pred ", pred) ##del knov
+        print("pred shape:", pred.shape) ##del knov
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
         res = []
